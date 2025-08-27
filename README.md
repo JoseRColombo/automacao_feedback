@@ -2,6 +2,10 @@
 
 ### Este é um projeto que construí para demonstrar minhas habilidades em automação, integração de sistemas e aplicação de IA para resolver um problema de negócio real.
 
+![Demonstração dos Testes Dinamicos](./testes_dinamicos.mkv)
+![Demonstração da automação no Google Sheets](./gif_funcao_planilha.gif)
+![Demonstração da automação no Gmail](./gif_funcao_gmail.gif)
+
 ### O Problema: Atendimento ao Cliente digital no Século 21 é Caótico
 
 Marcas como a Gocase, com forte presença digital, recebem feedback de clientes em todos os lugares: comentários em anúncios, DMs no Instagram, posts no Facebook, posts no Instagram.
