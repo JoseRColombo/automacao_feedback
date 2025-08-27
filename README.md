@@ -17,7 +17,7 @@ Esse workflow em n8n funciona como um sistema que centraliza e age sobre esses f
 1.  **Captura:** Simula a chegada de comentários de diversas fontes (neste case, a partir de um nó de código em **JavaScript** com múltiplos cenários de teste, escolhendo um cenário aleátorio por vez).
 2.  **Análise e Triagem com IA:** Usa a API do **Google Gemini** para ler o comentário e extrair informações cruciais através do comentário do usuário: sentimento, categoria do problema  e qual time interno deveria cuidar do caso.
 3.  **Padronização e Lógica de Negócio:** Um script em **Python** para:
-    * **Limpar os dados** extraídos pela IA (como números de pedido), garantindo um formato padrão e confiável.
+    * **Limpar os dados** extraídos pela IA, garantindo um formato padrão e confiável. Ex: Se o usuário informar o número do pedido no comentário, utilizo a biblioteca `re` para pegar somente o número do pedido, independente se o cliente informar algum character especial.
     * Aplicar **regras de negócio customizadas**, como calcular um nível de urgência com base na categoria e no sentimento.
 4.  **Roteamento e Priorização:** Um nó **Switch** direciona a tarefa para o time correto. Em seguida, caso o ticket seja para os times de Logistica ou Suporte, nós **IF** aninhados verificam a urgência, separando os casos críticos dos normais e criando filas de atendimento especializadas.
 5.  **Ações Finais:** O sistema executa ações concretas e específicas para cada cenário, como: adicionar tickets em diferentes abas de uma planilha no Google Sheets e enviar e-mails dinâmicos para o time de Marketing com insights.
