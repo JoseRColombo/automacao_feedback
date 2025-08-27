@@ -1,0 +1,986 @@
+{
+  "name": "mini projeto - GOCASE",
+  "nodes": [
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=Você é um assistente de análise de feedback para a empresa Gocase. Sua tarefa é analisar o comentário de cliente abaixo e retornar APENAS um objeto JSON válido.\n\nComentário do Cliente: \"{{ $json.texto_do_comentario }}\"\n\nAnalise o comentário e retorne um objeto JSON com a seguinte estrutura:\n1. \"sentimento\": \"Positivo\", \"Negativo\" ou \"Neutro\".\n2. \"categoria\": \"Elogio de Produto\", \"Dúvida sobre Produto\", \"Problema com Entrega\", \"Sugestão de Melhoria\", \"Atendimento\" ou \"Outros\".\n3. \"resumo\": Um resumo de uma frase do comentário.\n4. \"setor_sugerido\": Para definir  \"setor_sugerido\", use as seguintes regras de negócio da empresa:\n- Se o problema for sobre entrega, atraso, frete ou código de rastreamento, use \"Logistica\".\n- Se for um elogio, sugestão de produto novo, ou uma pergunta sobre campanhas (stories, posts), use \"Marketing\".\n- Para todos os outros casos, como problemas com a qualidade do produto, dúvidas sobre o uso, garantia ou pagamentos, use \"Suporte ao Cliente\".\n5. \"extrair_dados\": Extraia o número do pedido ou nome do produto, se houver. Caso contrário, retorne null.\n6. \"tipo_de_resposta_sugerida\": Se o comentário precisar de dados pessoais (número do pedido, email, etc.) para ser resolvido, retorne \"Responder cliente em conversa privada\". Se for uma pergunta genérica sobre o produto, retorne \"Responder comentário\"."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        656,
+        -16
+      ],
+      "id": "879751ed-787a-4509-9b74-7c74b783dbd7",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "8Ect4bEaBR5w3YUO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const bancoDeComentarios = [\n    // suporte ao usuario urgente\n    {\n        \"autor\": \"Bruno Costa\",\n        \"texto_do_comentario\": \"PÉSSIMO! Meu pedido #54321 está super atrasado e ninguém do suporte me responde. Onde está minha encomenda??\",\n        \"origem\": \"Instagram\"\n    },\n    // elogio de produto\n    {\n        \"autor\": \"Ana Silva\",\n        \"texto_do_comentario\": \"Simplesmente apaixonada pela minha nova case da linha Az by Gocase! A qualidade é incrível e o design é perfeito. Chegou em 2 dias!\",\n        \"origem\": \"Instagram\"\n    },\n    // sugestao de melhoria\n    {\n        \"autor\": \"Marcos Andrade\",\n        \"texto_do_comentario\": \"Adoro os produtos de vocês, mas sinto falta de uma linha de carteiras MagSafe com as mesmas estampas das capinhas. Fica a dica!\",\n        \"origem\": \"Twitter\"\n    },\n    // duvida geral sobre produto\n    {\n        \"autor\": \"Daniel Farias\",\n        \"texto_do_comentario\": \"Olá! Gostaria de saber se a garrafa térmica de vocês aguenta bebidas quentes e se a tampa veda bem pra não vazar na bolsa.\",\n        \"origem\": \"Facebook\"\n    },\n    // problema com produto\n    {\n        \"autor\": \"Fernanda Lima\",\n        \"texto_do_comentario\": \"Estou muito decepcionada. A alça da minha bolsa que comprei semana passada já arrebentou. Como faço para acionar a garantia?\",\n        \"origem\": \"E-mail\"\n    },\n    // teste de borda\n    {\n        \"autor\": \"Vitor Souza\",\n        \"texto_do_comentario\": \"Qual o nome da música que toca no último stories de vocês?\",\n        \"origem\": \"DM do Instagram\"\n     }, \n  {\n        \"autor\": \"João Lucas\",\n        \"texto_do_comentario\": \"meu pedido está atrasado faz 3 dias, o codigo dele é 21321.\",\n        \"origem\": \"DM do Instagram\"\n     }\n];\n\nconst randomIndex = Math.floor(Math.random() * bancoDeComentarios.length);\nconst comentarioSorteado = bancoDeComentarios[randomIndex];\n\nreturn comentarioSorteado;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        0
+      ],
+      "id": "5edb9409-c146-476a-91bc-20515a891724",
+      "name": "JS"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import json\nimport re \n\ndef padronizar_extracao(dado_extraido):\n    \n    if dado_extraido is None:\n        return \"\"\n    if isinstance(dado_extraido, dict):\n        dado_extraido = next(iter(dado_extraido.values()), \"\")\n    texto = str(dado_extraido)\n    #regular expressions para removar qualquer coisa que nao seja numeros\n    numeros = re.sub(r'\\D', '', texto)\n    return numeros\n\ndados_brutos_do_gemini = items[0].json\n\ntry:\n    texto_bruto = dados_brutos_do_gemini['content']['parts'][0]['text']\n    inicio_json = texto_bruto.find('{')\n    fim_json = texto_bruto.rfind('}') + 1\n    \n    if inicio_json != -1 and fim_json != -1:\n        json_puro_str = texto_bruto[inicio_json:fim_json]\n        dados_analisados = json.loads(json_puro_str)\n    else:\n        raise ValueError(\"Nenhum objeto JSON encontrado na resposta da IA.\")\n\n    dados_analisados['extrair_dados'] = padronizar_extracao(dados_analisados.get('extrair_dados'))\n\n    urgencia = \"Normal\"\n    categoria = dados_analisados.get(\"categoria\")\n    sentimento = dados_analisados.get(\"sentimento\")\n\n    if categoria in [\"Problema com Entrega\", \"Problema com Produto\"] and sentimento == \"Negativo\":\n        urgencia = \"Muito Alta\"\n    elif sentimento == \"Negativo\":\n        urgencia = \"Alta\"\n    \n    dados_analisados['nivel_urgencia'] = urgencia\n\n    return [ { \"json\": dados_analisados } ]\n\nexcept Exception as e:\n    error_data = {\n        \"error\": \"Erro crítico no nó Python.\",\n        \"detalhes\": str(e)\n    }\n    return [ { \"json\": error_data } ]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        0
+      ],
+      "id": "327cd613-7035-47c3-81e1-caf5fd813c68",
+      "name": "Python"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.setor_sugerido }}",
+                    "rightValue": "Marketing",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "0a9d6839-1c97-473f-831c-78b328e13a47"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "1a527182-4455-4d32-960b-cb0ca2160a2f",
+                    "leftValue": "={{ $json.setor_sugerido }}",
+                    "rightValue": "Logistica",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "75f49a56-9415-4c8d-b22c-5994c0a779cf",
+                    "leftValue": "={{ $json.setor_sugerido }}",
+                    "rightValue": "Suporte ao Cliente",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1536,
+        -16
+      ],
+      "id": "cb53b721-2147-4892-b321-be2d478ebecc",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3bedea9b-1d93-438f-ae50-c460cb4318d7",
+              "leftValue": "={{ $json.nivel_urgencia }}",
+              "rightValue": "Muito Alta",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "62e222dc-9ccf-43b4-96fc-8b2a1f906197",
+              "leftValue": "={{ $json.nivel_urgencia }}",
+              "rightValue": "Alta",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1840,
+        -16
+      ],
+      "id": "9115cbea-5d10-45f8-9211-4f13d44164d0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc",
+          "mode": "list",
+          "cachedResultName": "case - gocase",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1471375207,
+          "mode": "list",
+          "cachedResultName": "Urgências - Logistica",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit#gid=1471375207"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Nivel_Urgencia": "={{ $json.nivel_urgencia }}",
+            "Sugestão": "={{ $json.tipo_de_resposta_sugerida }}",
+            "Autor": "={{ $json.autor }}",
+            "Comentario_Original": "={{ $json.texto_do_comentario }}",
+            "Resumo": "={{ $json.resumo }}",
+            "Origem": "={{ $json.origem }}",
+            "Data": "={{ $now }}",
+            "Setor_Sugerido": "={{ $json.setor_sugerido }}",
+            "Numero_Pedido": "={{ $json.extrair_dados }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Data",
+              "displayName": "Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Origem",
+              "displayName": "Origem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Autor",
+              "displayName": "Autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resumo",
+              "displayName": "Resumo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nivel_Urgencia",
+              "displayName": "Nivel_Urgencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Numero_Pedido",
+              "displayName": "Numero_Pedido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sugestão",
+              "displayName": "Sugestão",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Setor_Sugerido",
+              "displayName": "Setor_Sugerido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Comentario_Original",
+              "displayName": "Comentario_Original",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2144,
+        -112
+      ],
+      "id": "8eafa161-54ff-48b0-ae4a-5803f960add0",
+      "name": "Logistica - Urgente",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "e4USvXl9mRshtKVf",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc",
+          "mode": "list",
+          "cachedResultName": "case - gocase",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1471375207,
+          "mode": "list",
+          "cachedResultName": "Feedback Logistica - Normal",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit#gid=1471375207"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Data": "={{ $now }}",
+            "Origem": "={{ $json.origem }}",
+            "Autor": "={{ $json.autor }}",
+            "Resumo": "={{ $json.resumo }}",
+            "Nivel_Urgencia": "={{ $json.nivel_urgencia }}",
+            "Comentario_Original": "={{ $json.texto_do_comentario }}",
+            "Sugestão": "={{ $json.tipo_de_resposta_sugerida }}",
+            "Setor_Sugerido": "={{ $json.setor_sugerido }}",
+            "Numero_Pedido": "={{ $json.extrair_dados }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Data",
+              "displayName": "Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Origem",
+              "displayName": "Origem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Autor",
+              "displayName": "Autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resumo",
+              "displayName": "Resumo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nivel_Urgencia",
+              "displayName": "Nivel_Urgencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Numero_Pedido",
+              "displayName": "Numero_Pedido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sugestão",
+              "displayName": "Sugestão",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Setor_Sugerido",
+              "displayName": "Setor_Sugerido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Comentario_Original",
+              "displayName": "Comentario_Original",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        2144,
+        32
+      ],
+      "id": "dcfcd820-7979-4560-b73a-1a9606bb3fd6",
+      "name": "Logistica - Normal",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "e4USvXl9mRshtKVf",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "606cf942-145e-40c4-84de-cc9690c3b2f7",
+              "leftValue": "={{ $json.nivel_urgencia }}",
+              "rightValue": "Muito Alta",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "3cec978b-1b42-40ef-af44-175d58cb1bce",
+              "leftValue": "={{ $json.nivel_urgencia }}",
+              "rightValue": "Alta",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1680,
+        224
+      ],
+      "id": "981bdcaa-dffc-4728-8e2a-9d9b955fc382",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc",
+          "mode": "list",
+          "cachedResultName": "case - gocase",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Urgências - Suporte Cliente",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Autor": "={{ $json.autor }}",
+            "Comentario_Original": "={{ $json.texto_do_comentario }}",
+            "Setor_Sugerido": "={{ $json.setor_sugerido }}",
+            "Nivel_Urgencia": "={{ $json.nivel_urgencia }}",
+            "Sugestão": "={{ $json.tipo_de_resposta_sugerida }}",
+            "Resumo": "={{ $json.resumo }}",
+            "Origem": "={{ $json.origem }}",
+            "Data": "={{ $now }}",
+            "Numero_Pedido": "={{ $json.extrair_dados }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Data",
+              "displayName": "Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Origem",
+              "displayName": "Origem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Autor",
+              "displayName": "Autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resumo",
+              "displayName": "Resumo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nivel_Urgencia",
+              "displayName": "Nivel_Urgencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Numero_Pedido",
+              "displayName": "Numero_Pedido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sugestão",
+              "displayName": "Sugestão",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Setor_Sugerido",
+              "displayName": "Setor_Sugerido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Comentario_Original",
+              "displayName": "Comentario_Original",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1920,
+        192
+      ],
+      "id": "e050c7fb-cfbe-4d9a-bb08-022da5f2e585",
+      "name": "Suporte ao Cliente - Urgente",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "e4USvXl9mRshtKVf",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc",
+          "mode": "list",
+          "cachedResultName": "case - gocase",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1246117744,
+          "mode": "list",
+          "cachedResultName": "Geral - Suporte Cliente",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1SRYhILccAZccijV22R5RwPLH0vtyFXAps64DnPcXuLc/edit#gid=1246117744"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Data": "={{ $now }}",
+            "Origem": "={{ $json.origem }}",
+            "Autor": "={{ $json.autor }}",
+            "Resumo": "={{ $json.resumo }}",
+            "Nivel_Urgencia": "={{ $json.nivel_urgencia }}",
+            "Comentario_Original": "={{ $json.texto_do_comentario }}",
+            "Sugestão": "={{ $json.tipo_de_resposta_sugerida }}",
+            "Setor_Sugerido": "={{ $json.setor_sugerido }}",
+            "Numero_Pedido": "={{ $json.extrair_dados }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Data",
+              "displayName": "Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Origem",
+              "displayName": "Origem",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Autor",
+              "displayName": "Autor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Resumo",
+              "displayName": "Resumo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Nivel_Urgencia",
+              "displayName": "Nivel_Urgencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Numero_Pedido",
+              "displayName": "Numero_Pedido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sugestão",
+              "displayName": "Sugestão",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Setor_Sugerido",
+              "displayName": "Setor_Sugerido",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Comentario_Original",
+              "displayName": "Comentario_Original",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1840,
+        384
+      ],
+      "id": "61c100d6-04c5-4cff-b9c9-2089bddadef4",
+      "name": "Suporte ao Cliente - Normal",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "e4USvXl9mRshtKVf",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "jr040405@gmail.com",
+        "subject": "={{ $json.categoria === 'Elogio de Produto' ? 'Elogio de Cliente! Ótima Prova Social!' : ($json.categoria === 'Sugestão de Melhoria' ? 'Insight de Cliente! Sugestão de Melhoria!' : 'Nova Interação de Cliente: ' + $json.resumo) }}",
+        "emailType": "text",
+        "message": "=Olá Time de Marketing,\n\nNossa automação identificou um novo feedback de cliente com alto valor estratégico!\n\n-------------------------------------------\nDADOS DO FEEDBACK\n-------------------------------------------\n\n- Autor: {{ $json.autor }}\n- Origem: {{ $json.origem }}\n- Comentário Original: \"{{ $json.texto_do_comentario }}\"\n\n- Análise da IA:\n  - Sentimento: {{ $json.sentimento }}\n  - Categoria: {{ $json.categoria }}\n  - Resumo: {{ $json.resumo }}\n\n-------------------------------------------\nSUGESTÃO DE AÇÃO\n-------------------------------------------\n{{ $json.categoria === 'Elogio de Produto' ? 'Podemos entrar em contato com o(a) cliente para pedir autorização e usar este comentário em nossas próximas campanhas.' : ($json.categoria === 'Sugestão de Melhoria' ? 'Esta é uma sugestão de melhoria valiosa. Podemos encaminhar este insight para o time de Produto/Desenvolvimento para que seja considerada em futuras atualizações ou novos lançamentos.' : 'Esta é uma interação direta de um cliente. Podemos verificar e responder diretamente.') }}\n\nAbraços,\nAutomação de Feedback",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1728,
+        -208
+      ],
+      "id": "42d40a77-4249-48f4-924b-66d9c0a609df",
+      "name": "E-mail para o marketing",
+      "webhookId": "60749d31-ed50-4351-abc8-4e04d4d0fe8d",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "rzp1NXcjQ6Yam1tC",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const dadosOriginais = $('JS').item.json;\n\nconst dadosAnalisados = $json;\n\nconst resultadoFinal = { ...dadosOriginais, ...dadosAnalisados };\n\nreturn resultadoFinal;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        -16
+      ],
+      "id": "0884d715-1b29-486e-bd69-e61723cc2775",
+      "name": "Montar objeto final"
+    },
+    {
+      "parameters": {
+        "formTitle": "Exemplo de comentario",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Seu nome"
+            },
+            {
+              "fieldLabel": "Feedback"
+            },
+            {
+              "fieldLabel": "Rede social"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        192
+      ],
+      "id": "7c6c17dc-6023-4f14-a32f-05fee9dc3ca2",
+      "name": "On form submission",
+      "webhookId": "a7774bd2-3ee2-44fb-a823-016c743496e2"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        128,
+        32
+      ],
+      "id": "3993b840-cc82-4493-920b-1e4cbf4e4030",
+      "name": "When clicking ‘Execute workflow’"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Python",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JS": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Python": {
+      "main": [
+        [
+          {
+            "node": "Montar objeto final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "E-mail para o marketing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [],
+        []
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Logistica - Urgente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Logistica - Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Suporte ao Cliente - Urgente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Suporte ao Cliente - Normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar objeto final": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "JS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "3b6ccfe0-0c84-448e-ba12-f16fbba52165",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3e2de2193d85c0c00f216f726cc947746f09ce7f8ccd5445a36c427f14f17807"
+  },
+  "id": "de7yKF0AN2IZsyWI",
+  "tags": []
+}
