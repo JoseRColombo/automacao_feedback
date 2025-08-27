@@ -11,7 +11,7 @@
 ![Demonstração da automação no Gmail](./gif_funcao_gmail.gif)
 
 
-### Demonstração completa e dinâmica
+### Demonstração completa e dinâmica (clique no PNG para acessar o vídeo no youtube)
 [![Thumbnail do Vídeo](workspace_n8n.png)](https://youtu.be/wrIAiaHsE0M)
 
 
